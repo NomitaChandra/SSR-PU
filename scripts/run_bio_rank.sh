@@ -2,10 +2,10 @@
 
 python train_bio.py --data_dir ./dataset/chemdisgene \
     --transformer_type bert \
-    --model_name_or_path ../../pretrain/BiomedNLP-PubMedBERT-base-uncased-abstract \
+    --model_name_or_path ./pretrain/BiomedNLP-PubMedBERT-base-uncased-abstract \
     --train_file train.json \
-    --dev_file valid.json \
-    --test_file test.anno_all.json \
+    --dev_file dev.json \
+    --test_file test.json \
     --train_batch_size 8 \
     --test_batch_size 8 \
     --gradient_accumulation_steps 1 \

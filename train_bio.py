@@ -145,17 +145,17 @@ def evaluate(args, model, features, tag="test"):
             "re_r": micro_r * 100,
         }
 
-    return micro_f, mi_output
+    return micro_f, mi_output, preds
 
 
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--data_dir", default="./dataset/docred", type=str)
+    parser.add_argument("--data_dir", default="./dataset/chemdisgene", type=str)
     parser.add_argument("--transformer_type", default="bert", type=str)
     parser.add_argument("--model_name_or_path", default="bert-base-cased", type=str)
 
-    parser.add_argument("--train_file", default="train_annotated.json", type=str)
+    parser.add_argument("--train_file", default="train.json", type=str)
     parser.add_argument("--dev_file", default="dev.json", type=str)
     parser.add_argument("--test_file", default="test.json", type=str)
     parser.add_argument("--save_path", default="out", type=str)
@@ -265,12 +265,18 @@ def main():
     else:  # Testing
         args.load_path = os.path.join(args.load_path, file_name)
         print(args.load_path)
-        
+    
+        import pandas as pd
+
         print("TEST")
         model = amp.initialize(model, opt_level="O1", verbosity=0)
         model.load_state_dict(torch.load(args.load_path))
-        test_score, test_output = evaluate(args, model, test_features, tag="test")
+        test_score, test_output, preds = evaluate(args, model, test_features, tag="test")
         print(test_output)
+
+        # Convert preds to a DataFrame and save to CSV
+        preds_df = pd.DataFrame(preds)
+        preds_df.to_csv("predictions.csv", index=False)
 
 
 if __name__ == "__main__":
