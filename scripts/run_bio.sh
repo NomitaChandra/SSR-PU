@@ -1,8 +1,10 @@
 #!/bin/sh
 
+export TF_CPP_MIN_LOG_LEVEL=3
+
 python train_bio.py --data_dir ./dataset/chemdisgene \
     --transformer_type bert \
-    --model_name_or_path ./pretrain/BiomedNLP-PubMedBERT-base-uncased-abstract \
+    --model_name_or_path /home/sagemaker-user/SSR-PU/SSR-PU/pretrain/BiomedNLP-PubMedBERT-base-uncased-abstract \
     --train_file train.json \
     --dev_file dev.json \
     --test_file test.json \

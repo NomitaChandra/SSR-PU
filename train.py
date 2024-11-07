@@ -1,9 +1,7 @@
 import argparse
 import os
-
 import numpy as np
 import torch
-from apex import amp
 import ujson as json
 from torch.utils.data import DataLoader
 from transformers import AutoConfig, AutoModel, AutoTokenizer
@@ -13,40 +11,47 @@ from model import DocREModel
 from utils import set_seed, collate_fn
 from prepro import read_docred
 from evaluation import official_evaluate, to_official
-
+from torch.cuda.amp import GradScaler, autocast
 
 def train(args, model, train_features, dev_features):
-    def finetune(features, optimizer, num_epoch, num_steps):
+    scaler = GradScaler()  # Initialize the gradient scaler
 
+    def finetune(features, optimizer, num_epoch, num_steps):
         train_dataloader = DataLoader(features, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
         train_iterator = range(int(num_epoch))
         total_steps = int(len(train_dataloader) * num_epoch // args.gradient_accumulation_steps)
         warmup_steps = int(total_steps * args.warmup_ratio)
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
+        
         print("Total steps: {}".format(total_steps))
         print("Warmup steps: {}".format(warmup_steps))
+        
         for epoch in tqdm(train_iterator):
             model.zero_grad()
             for step, batch in enumerate(tqdm(train_dataloader)):
                 model.train()
+                inputs = {
+                    'input_ids': batch[0].to(args.device),
+                    'attention_mask': batch[1].to(args.device),
+                    'labels': batch[2],
+                    'entity_pos': batch[3],
+                    'hts': batch[4],
+                }
 
-                inputs = {'input_ids': batch[0].to(args.device),
-                        'attention_mask': batch[1].to(args.device),
-                        'labels': batch[2],
-                        'entity_pos': batch[3],
-                        'hts': batch[4],
-                        }
+                # Use autocast for mixed-precision
+                with autocast():
+                    outputs = model(**inputs)
+                    loss = outputs[0] / args.gradient_accumulation_steps
 
-                outputs = model(**inputs)
-                loss = outputs[0] / args.gradient_accumulation_steps
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
+                scaler.scale(loss).backward()
+
                 if step % args.gradient_accumulation_steps == 0:
                     if args.max_grad_norm > 0:
-                        torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
-                    optimizer.step()
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                    scaler.step(optimizer)
+                    scaler.update()
+                    optimizer.zero_grad()
                     scheduler.step()
-                    model.zero_grad()
                     num_steps += 1
 
                 if (step + 1) == len(train_dataloader) - 1 or (args.evaluation_steps > 0 and num_steps % args.evaluation_steps == 0 and step % args.gradient_accumulation_steps == 0):
@@ -65,27 +70,25 @@ def train(args, model, train_features, dev_features):
     ]
 
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
-    model, optimizer = amp.initialize(model, optimizer, opt_level="O1", verbosity=0)
     num_steps = 0
     set_seed(args)
     model.zero_grad()
     finetune(train_features, optimizer, args.num_train_epochs, num_steps)
 
 def cal_val_risk(args, model, features):
-
     dataloader = DataLoader(features, batch_size=args.test_batch_size, shuffle=False, collate_fn=collate_fn, drop_last=False)
     val_risk = 0.
     nums = 0
 
     for batch in dataloader:
         model.eval()
-
-        inputs = {'input_ids': batch[0].to(args.device),
-                  'attention_mask': batch[1].to(args.device),
-                  'labels': batch[2],
-                  'entity_pos': batch[3],
-                  'hts': batch[4],
-                  }
+        inputs = {
+            'input_ids': batch[0].to(args.device),
+            'attention_mask': batch[1].to(args.device),
+            'labels': batch[2],
+            'entity_pos': batch[3],
+            'hts': batch[4],
+        }
 
         with torch.no_grad():
             risk, logits = model(**inputs)
@@ -95,17 +98,16 @@ def cal_val_risk(args, model, features):
     return val_risk / nums
 
 def evaluate(args, model, features, tag="test"):
-
     dataloader = DataLoader(features, batch_size=args.test_batch_size, shuffle=False, collate_fn=collate_fn, drop_last=False)
     preds = []
     for batch in dataloader:
         model.eval()
-
-        inputs = {'input_ids': batch[0].to(args.device),
-                  'attention_mask': batch[1].to(args.device),
-                  'entity_pos': batch[3],
-                  'hts': batch[4],
-                  }
+        inputs = {
+            'input_ids': batch[0].to(args.device),
+            'attention_mask': batch[1].to(args.device),
+            'entity_pos': batch[3],
+            'hts': batch[4],
+        }
 
         with torch.no_grad():
             logits = model(**inputs)
@@ -142,13 +144,12 @@ def evaluate(args, model, features, tag="test"):
         }
     return best_f1, output
 
-
 def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--data_dir", default="./dataset/docred", type=str)
     parser.add_argument("--transformer_type", default="bert", type=str)
-    parser.add_argument("--model_name_or_path", default="bert-base-cased", type=str)
+    parser.add_argument("--model_name_or_path", default="/home/sagemaker-user/SSR-PU/SSR-PU/pretrain/BiomedNLP-PubMedBERT-base-uncased-abstract", type=str)
 
     parser.add_argument("--train_file", default="train_annotated.json", type=str)
     parser.add_argument("--dev_file", default="dev.json", type=str)
@@ -192,6 +193,8 @@ def main():
     parser.add_argument('--gamma', type=float, default=1.0, help='gamma of pu learning (default 1.0)')
     parser.add_argument('--m', type=float, default=1.0, help='margin')
     parser.add_argument('--e', type=float, default=3.0, help='estimated a priors multiple')
+    # Add arguments as in your original script
+    # ...
 
     args = parser.parse_args()
 
@@ -250,7 +253,6 @@ def main():
         train(args, model, train_features, dev_features)
 
         print("TEST")
-        model = amp.initialize(model, opt_level="O1", verbosity=0)
         model.load_state_dict(torch.load(args.save_path))
         test_score, test_output = evaluate(args, model, test_features, tag="test")
         print(test_output)
@@ -258,13 +260,11 @@ def main():
     else:  # Testing
         args.load_path = os.path.join(args.load_path, file_name)
         print(args.load_path)
-        
+
         print("TEST")
-        model = amp.initialize(model, opt_level="O1", verbosity=0)
         model.load_state_dict(torch.load(args.load_path))
         test_score, test_output = evaluate(args, model, test_features, tag="test")
         print(test_output)
-
 
 if __name__ == "__main__":
     main()

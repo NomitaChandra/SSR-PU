@@ -2,7 +2,7 @@
 
 python train.py --data_dir ./dataset/docred \
     --transformer_type bert \
-    --model_name_or_path ../../pretrain/bert-base-cased \
+    --model_name_or_path /home/sagemaker-user/SSR-PU/SSR-PU/pretrain/BiomedNLP-PubMedBERT-base-uncased-abstract \
     --train_file train_annotated.json \
     --dev_file dev.json \
     --test_file test_revised.json \

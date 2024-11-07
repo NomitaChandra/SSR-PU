@@ -52,10 +52,10 @@ class DocREModel(nn.Module):
                     e_emb, e_att = [], []
                     for start, end in e:
                         if start + offset < c:
-                            # In case the entity mention is truncated due to limited max seq length.
+                            # Handle entity mention truncated due to max seq length
                             e_emb.append(sequence_output[i, start + offset])
                             e_att.append(attention[i, :, start + offset])
-                    if len(e_emb) > 0:
+                    if e_emb:  # If e_emb is non-empty
                         e_emb = torch.logsumexp(torch.stack(e_emb, dim=0), dim=0)
                         e_att = torch.stack(e_att, dim=0).mean(0)
                     else:
@@ -71,19 +71,27 @@ class DocREModel(nn.Module):
                         e_att = torch.zeros(h, c).to(attention)
                 entity_embs.append(e_emb)
                 entity_atts.append(e_att)
-
-            entity_embs = torch.stack(entity_embs, dim=0)
-            entity_atts = torch.stack(entity_atts, dim=0)
-
-            if len(hts[i]) == 0:
+    
+            if entity_embs:  # Ensure entity_embs is non-empty before stacking
+                entity_embs = torch.stack(entity_embs, dim=0)
+                entity_atts = torch.stack(entity_atts, dim=0)
+            else:
+                print(f"Warning: No entities found for index {i}")
                 hss.append(torch.FloatTensor([]).to(sequence_output.device))
                 tss.append(torch.FloatTensor([]).to(sequence_output.device))
                 rss.append(torch.FloatTensor([]).to(sequence_output.device))
                 continue
+    
+            if len(hts[i]) == 0:  # If there are no head-tail pairs
+                hss.append(torch.FloatTensor([]).to(sequence_output.device))
+                tss.append(torch.FloatTensor([]).to(sequence_output.device))
+                rss.append(torch.FloatTensor([]).to(sequence_output.device))
+                continue
+    
             ht_i = torch.LongTensor(hts[i]).to(sequence_output.device)
             hs = torch.index_select(entity_embs, 0, ht_i[:, 0])
             ts = torch.index_select(entity_embs, 0, ht_i[:, 1])
-
+    
             h_att = torch.index_select(entity_atts, 0, ht_i[:, 0])
             t_att = torch.index_select(entity_atts, 0, ht_i[:, 1])
             ht_att = (h_att * t_att).mean(1)
@@ -92,10 +100,10 @@ class DocREModel(nn.Module):
             hss.append(hs)
             tss.append(ts)
             rss.append(rs)
-
-        hss = torch.cat(hss, dim=0)
-        tss = torch.cat(tss, dim=0)
-        rss = torch.cat(rss, dim=0)
+    
+        hss = torch.cat(hss, dim=0) if hss else torch.FloatTensor([]).to(sequence_output.device)
+        tss = torch.cat(tss, dim=0) if tss else torch.FloatTensor([]).to(sequence_output.device)
+        rss = torch.cat(rss, dim=0) if rss else torch.FloatTensor([]).to(sequence_output.device)
         return hss, rss, tss
 
     def square_loss(self, yPred, yTrue, margin=1.):
