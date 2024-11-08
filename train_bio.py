@@ -170,7 +170,7 @@ def main():
     parser.add_argument("--dev_file", default="dev.json", type=str)
     parser.add_argument("--test_file", default="test.json", type=str)
     parser.add_argument("--save_path", default="out", type=str)
-    parser.add_argument("--load_path", default="", type=str)
+    parser.add_argument("--load_path", default="/home/sagemaker-user/SSR-PU/SSR-PU/out", type=str)
 
     parser.add_argument("--config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
