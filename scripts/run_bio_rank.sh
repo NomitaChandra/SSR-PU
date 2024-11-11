@@ -14,7 +14,7 @@ python train_bio.py --data_dir ./dataset/chemdisgene \
     --warmup_ratio 0.06 \
     --num_train_epochs 30.0 \
     --seed 66 \
-    --num_class 15 \
+    --num_class 1 \
     --isrank 1 \
     --m_tag S-PU \
     --m 0.25 \

@@ -275,8 +275,12 @@ def main():
         print(test_output)
 
         # Convert preds to a DataFrame and save to CSV
-        preds_df = pd.DataFrame(preds)
-        preds_df.to_csv("predictions.csv", index=False)
+        preds_df = pd.DataFrame({
+            "Input": test_features,  # Replace with actual input data if different
+            "Prediction": preds
+        })
+        preds_df.to_csv("test_predictions.csv", index=False)
+
 
 
 if __name__ == "__main__":

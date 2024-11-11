@@ -3,7 +3,7 @@ import os
 
 import numpy as np
 import torch
-from apex import amp
+# from apex import amp
 import ujson as json
 from torch.utils.data import DataLoader
 from transformers import AutoConfig, AutoModel, AutoTokenizer
@@ -140,7 +140,7 @@ def evaluate(args, model, features, tag="test"):
             tag + "_F1": best_f1 * 100,
             tag + "_F1_ign": best_f1_ign * 100,
         }
-    return best_f1, output
+    return best_f1, output, preds
 
 
 def main():
@@ -259,11 +259,17 @@ def main():
         args.load_path = os.path.join(args.load_path, file_name)
         print(args.load_path)
         
+        import pandas as pd
+
         print("TEST")
         model = amp.initialize(model, opt_level="O1", verbosity=0)
         model.load_state_dict(torch.load(args.load_path))
-        test_score, test_output = evaluate(args, model, test_features, tag="test")
+        test_score, test_output, preds = evaluate(args, model, test_features, tag="test")
         print(test_output)
+
+        # Convert preds to a DataFrame and save to CSV
+        preds_df = pd.DataFrame(preds)
+        preds_df.to_csv("predictions.csv", index=False)
 
 
 if __name__ == "__main__":
